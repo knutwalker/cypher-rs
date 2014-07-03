@@ -6,6 +6,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.neo4j.graphdb.Transaction;
 
+import java.util.Map;
+
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -16,6 +18,7 @@ public class CypherRsTest extends RestTestBase {
     public static final String KEY = "foo";
     private WebResource cypherRsPath;
     public static final String QUERY = "start n=node({id}) return n";
+    private static final String PRETTY_QUERY = "START n=node({ id })\nRETURN n";
 
     @Before
     public void setUp() throws Exception {
@@ -44,5 +47,15 @@ public class CypherRsTest extends RestTestBase {
         cypherRsPath.put(ClientResponse.class, QUERY);
         ClientResponse response = cypherRsPath.delete(ClientResponse.class);
         assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    public void testShowEndpoint() throws Exception {
+        cypherRsPath.put(ClientResponse.class, QUERY);
+        ClientResponse response = cypherRsPath.path("_show").get(ClientResponse.class);
+        assertEquals(200, response.getStatus());
+        Map<String, Object> resultJson = Utils.readJson(response.getEntity(String.class));
+        assertEquals(PRETTY_QUERY, resultJson.get("query"));
+        assertEquals(false, resultJson.get("is_write_query"));
     }
 }

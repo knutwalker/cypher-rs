@@ -80,6 +80,13 @@ public class Utils {
         return OBJECT_MAPPER.writeValueAsString(value);
     }
 
+    public static String toPrettyJson(Object value) throws IOException {
+        if(value == null)
+          return null;
+
+        return OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(value);
+    }
+
     static void writeToJson(ExecutionResult result, OutputStream out) throws IOException {
         Object data = toObject(result);
         OBJECT_MAPPER.writeValue(out, data);

@@ -7,6 +7,7 @@ import org.neo4j.cypher.javacompat.ExecutionResult;
 import org.neo4j.cypher.javacompat.QueryStatistics;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.helpers.collection.IteratorUtil;
+import org.neo4j.helpers.collection.MapUtil;
 import org.neo4j.kernel.GraphDatabaseAPI;
 import org.neo4j.kernel.impl.core.GraphProperties;
 import org.neo4j.kernel.impl.core.NodeManager;
@@ -64,6 +65,24 @@ public class CypherRsService {
             }
         }
         return notFound();
+    }
+
+    @GET
+    @Path("/{key}/_show")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response showEndpoint(@PathParam("key") String key, @Context UriInfo uriInfo) {
+        try (Transaction tx = db.beginTx()) {
+            if (props.hasProperty(key)) {
+                final Map<String, Object> queryProperties = getQueryProperties(key);
+                tx.success();
+                return prettyJsonResponse(queryProperties);
+            } else {
+                return notFound();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            return Response.serverError().entity(e.getMessage()).build();
+        }
     }
 
     @GET
@@ -163,6 +182,25 @@ public class CypherRsService {
             close(body);
         }
         return notFound();
+    }
+
+    private Map<String, Object> getQueryProperties(final String key) {
+        String query = (String) props.getProperty(key);
+        final String prettify = engine.prettify(query.trim());
+        return MapUtil.genericMap(
+                "query", prettify,
+                "is_write_query", Utils.isWriteQuery(query));
+    }
+
+    private Response jsonResponse(String entity) {
+        if(entity == null)
+            return noContent();
+        return Response.ok(entity).build();
+    }
+
+    private Response prettyJsonResponse(Object value) throws IOException {
+        String entity = Utils.toPrettyJson(value);
+        return jsonResponse(entity);
     }
 
     private void close(Reader reader) {
