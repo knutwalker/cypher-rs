@@ -86,6 +86,24 @@ public class CypherRsService {
     }
 
     @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response showAllEndpoints() {
+        Map<String, Object> registeredQueries = new HashMap<>();
+        try (Transaction tx = db.beginTx()) {
+            Iterable<String> keys = props.getPropertyKeys();
+            for (String key : keys) {
+                Map<String, Object> queryMap = getQueryProperties(key);
+                registeredQueries.put(key, queryMap);
+            }
+            tx.success();
+            return prettyJsonResponse(registeredQueries);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return Response.serverError().entity(e.getMessage()).build();
+        }
+    }
+
+    @GET
     @Path("/{key}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response readEndpoint(@PathParam("key") String key, @Context UriInfo uriInfo) {

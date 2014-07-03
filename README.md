@@ -129,6 +129,20 @@ You can `PUT` cypher queries to an endpoint with a certain url-suffix and then l
     
     --> 200 {"query": CREATE (n:Node {name:{name},age:{age},male:{male}})", "is_write_query": true}
 
+### SHOW ALL ENDPOINT
+ 
+    Verb: GET
+    URL: /cypher-rs/
+ 
+#### Example
+ 
+    GET /cypher-rs/
+    
+    --> 200 {
+      "users": {"query": "MATCH (n:User)\nWHERE n.name={name}\nRETURN n", "is_write_query": false},
+      "create-user": {"query": CREATE (n:Node {name:{name},age:{age},male:{male}})", "is_write_query": true}
+    }
+
 
 ### Types of results:
 
