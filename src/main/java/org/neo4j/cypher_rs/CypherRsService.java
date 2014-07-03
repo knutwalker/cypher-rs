@@ -113,18 +113,11 @@ public class CypherRsService {
                 if (Utils.isWriteQuery(query)) return Response.status(Response.Status.NOT_ACCEPTABLE).build();
                 Map<String, Object> params = Utils.toParams(uriInfo.getQueryParameters());
                 ExecutionResult result = engine.execute(query, params);
-                String json = Utils.toJson(result);
-
                 tx.success();
-
-                if(json == null)
-                    return noContent();
-
-                return Response.ok(json).build();
+                return jsonResponse(result);
             }
         } catch(Exception e) {
-            e.printStackTrace();
-            return Response.serverError().entity(e.getMessage()).build();
+            return errorResponse(e);
         }
         return notFound();
     }
@@ -137,7 +130,7 @@ public class CypherRsService {
         try (Transaction tx = db.beginTx()) {
             if (props.hasProperty(key)) {
                 List<Map<String, Object>> params = Utils.toParams(body);
-                List<Object> results=new ArrayList<>();
+                List<Object> results = new ArrayList<>();
                 String query = (String) props.getProperty(key);
                 for (Map<String, Object> param : params) {
                     ExecutionResult result = engine.execute(query, param);
@@ -149,35 +142,27 @@ public class CypherRsService {
                 if(retVal == null)
                     return noContent();
 
-                return Response.ok(Utils.toJson(retVal)).build();
+                return jsonResponse(retVal);
             }
         } catch (BadInputException e) {
             return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).build();
         } catch (Exception e) {
-            e.printStackTrace();
-            return Response.serverError().entity(e.getMessage()).build();
+            return errorResponse(e);
         }
         return notFound();
-    }
-
-    private Object singleOrList(List<Object> results) {
-        if (results.size() == 1) return results.get(0);
-        return results;
     }
 
     @POST
     @Path("/{key}")
     @Consumes(MediaType.TEXT_PLAIN)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response writeCsvEndpoint(@PathParam("key") String key, Reader body, @QueryParam("delim") String delim, @QueryParam("batch") String batch) {
-        int batchSize = 30000, count = 0;
-        if (batch!=null) batchSize = Integer.parseInt(batch);
+    public Response writeCsvEndpoint(@PathParam("key") String key, Reader body, @QueryParam("delim") String delim, @QueryParam("batch") Integer batch) {
+        int batchSize = batch == null ? 30000 : batch, count = 0;
         Transaction tx = db.beginTx();
         try {
             if (props.hasProperty(key)) {
                 String query = (String) props.getProperty(key);
-                if (delim==null) delim=",";
-                CSVReader reader = new CSVReader(body, delim.charAt(0),'"','\\',0,false,false);
+                CSVReader reader = getCsvReader(body, delim);
                 Map<String,Integer> stats = toMap(0,"nodes_created","nodes_deleted","relationships_created","relationships_deleted","labels_added","labels_removed","properties_set","rows");
                 Map<String,Object> header= toMap(null,reader.readNext());
                 for (String[] row = reader.readNext(); row != null; row = reader.readNext()) {
@@ -188,7 +173,7 @@ public class CypherRsService {
                     }
                 }
                 tx.success();
-                return Response.ok(Utils.toJson(stats)).build();
+                return jsonResponse(stats);
             }
         } catch (IOException e) {
             return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).build();
@@ -210,18 +195,48 @@ public class CypherRsService {
                 "is_write_query", Utils.isWriteQuery(query));
     }
 
-    private Response jsonResponse(String entity) {
+    private static CSVReader getCsvReader(final Reader body, final String delim) {
+        final char delimiter = delim == null ? ',' : delim.charAt(0);
+        final char quotechar = '"';
+        final char escapechar = '\\';
+        final int skipLines = 0;
+        final boolean strictQuotes = false;
+        final boolean ignoreLeadingWhiteSpace = false;
+        return new CSVReader(body, delimiter, quotechar, escapechar, skipLines, strictQuotes, ignoreLeadingWhiteSpace);
+    }
+
+    private static Object singleOrList(List<Object> results) {
+        if (results.size() == 1) return results.get(0);
+        return results;
+    }
+
+    private static Response jsonResponse(ExecutionResult value) throws IOException {
+        String entity = Utils.toJson(value);
+        return jsonResponse(entity);
+    }
+
+    private static Response jsonResponse(Object value) throws IOException {
+        String entity = Utils.toJson(value);
+        return jsonResponse(entity);
+    }
+
+    private static Response jsonResponse(String entity) {
         if(entity == null)
             return noContent();
         return Response.ok(entity).build();
     }
 
-    private Response prettyJsonResponse(Object value) throws IOException {
+    private static Response prettyJsonResponse(Object value) throws IOException {
         String entity = Utils.toPrettyJson(value);
         return jsonResponse(entity);
     }
 
-    private void close(Reader reader) {
+    private static Response errorResponse(Exception e) {
+        e.printStackTrace();
+        return Response.serverError().entity(e.getMessage()).build();
+    }
+
+    private static void close(Reader reader) {
         try {
             reader.close();
         } catch (IOException e) {
@@ -229,7 +244,7 @@ public class CypherRsService {
         }
     }
 
-    private void accumulateStats(Map<String, Integer> data, ExecutionResult result) {
+    private static void accumulateStats(Map<String, Integer> data, ExecutionResult result) {
         QueryStatistics stats = result.getQueryStatistics();
         if (stats==null || !stats.containsUpdates()) return;
         // "nodes_created","nodes_deleted","relationships_created","relationships_deleted",
@@ -239,7 +254,7 @@ public class CypherRsService {
                 stats.getLabelsAdded(), stats.getLabelsRemoved(), stats.getPropertiesSet(), IteratorUtil.count(result));
     }
 
-    private <T> Map<String, T> toMap(T value,String...row) {
+    private static <T> Map<String, T> toMap(T value, String... row) {
         Map<String, T> result = new LinkedHashMap<>(row.length);
         for (String field : row) {
             result.put(field,value);
@@ -247,25 +262,26 @@ public class CypherRsService {
         return result;
     }
 
-    private Map<String, Object> toParams(Map<String, Object> params, String[] row) {
+    private static Map<String, Object> toParams(Map<String, Object> params, String[] row) {
         int i=0;
         for (Map.Entry<String, Object> entry : params.entrySet()) {
             entry.setValue(Utils.convertIfNeeded(row[i++]));
         }
         return params;
     }
-    private void add(Map<String, Integer> data, int...stats) {
+
+    private static void add(Map<String, Integer> data, int... stats) {
         int i=0;
         for (Map.Entry<String, Integer> entry : data.entrySet()) {
             entry.setValue(entry.getValue() + stats[i++]);
         }
     }
 
-    private Response notFound() {
+    private static Response notFound() {
         return Response.status(Response.Status.NOT_FOUND).build();
     }
 
-    private Response noContent() {
+    private static Response noContent() {
         return Response.status(Response.Status.NO_CONTENT).build();
     }
 }
